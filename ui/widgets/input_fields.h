@@ -202,7 +202,7 @@ public:
 	}
 	TextWithTags getTextWithTagsPart(int start, int end = -1) const;
 	TextWithTags getTextWithAppliedMarkdown() const;
-	void insertTag(const QString &text, QString tagId = QString());
+	void insertTag(const QString &text, QString tagId = QString(), bool autoSpace = true);
 	bool empty() const {
 		return _lastTextWithTags.text.isEmpty();
 	}

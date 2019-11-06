@@ -1490,7 +1490,7 @@ void InputField::setMaxHeight(int height) {
 	_maxHeight = height;
 }
 
-void InputField::insertTag(const QString &text, QString tagId) {
+void InputField::insertTag(const QString &text, QString tagId, bool autoSpace) {
 	auto cursor = textCursor();
 	const auto position = cursor.position();
 
@@ -1561,12 +1561,18 @@ void InputField::insertTag(const QString &text, QString tagId) {
 		break;
 	}
 	if (tagId.isEmpty()) {
-		cursor.insertText(text + ' ', _defaultCharFormat);
+		if (autoSpace)
+			cursor.insertText(text + ' ', _defaultCharFormat);
+		else
+			cursor.insertText(text, _defaultCharFormat);
 	} else {
 		_insertedTags.clear();
 		_insertedTags.push_back({ 0, text.size(), tagId });
 		_insertedTagsAreFromMime = false;
-		cursor.insertText(text + ' ');
+		if (autoSpace)
+			cursor.insertText(text + ' ');
+		else
+			cursor.insertText(text);
 		_insertedTags.clear();
 	}
 }

@@ -9,6 +9,7 @@
 #include "ui/text/text_entity.h"
 #include "ui/effects/animation_value.h"
 #include "ui/widgets/popup_menu.h"
+#include "ui/toast/toast.h"
 #include "ui/widgets/box_content_divider.h"
 #include "ui/basic_click_handlers.h" // UrlClickHandler
 #include "ui/inactive_press.h"
@@ -459,6 +460,7 @@ Text::StateResult FlatLabel::dragActionFinish(const QPoint &p, Qt::MouseButton b
 		TextUtilities::SetClipboardText(
 			_text.toTextForMimeData(_selection),
 			QClipboard::Selection);
+		Ui::Toast::Show("Copied!");
 	}
 #endif // Q_OS_LINUX32 || Q_OS_LINUX64
 
@@ -530,6 +532,7 @@ void FlatLabel::keyPressEvent(QKeyEvent *e) {
 		auto selection = _selection.empty() ? (_contextMenu ? _savedSelection : _selection) : _selection;
 		if (!selection.empty()) {
 			TextUtilities::SetClipboardText(_text.toTextForMimeData(selection), QClipboard::FindBuffer);
+			Ui::Toast::Show("Copied!");
 		}
 #endif // Q_OS_MAC
 	}
@@ -671,11 +674,13 @@ void FlatLabel::onCopySelectedText() {
 	const auto selection = _selection.empty() ? (_contextMenu ? _savedSelection : _selection) : _selection;
 	if (!selection.empty()) {
 		TextUtilities::SetClipboardText(_text.toTextForMimeData(selection));
+		Ui::Toast::Show("Copied!");
 	}
 }
 
 void FlatLabel::onCopyContextText() {
 	TextUtilities::SetClipboardText(_text.toTextForMimeData());
+	Ui::Toast::Show("Copied!");
 }
 
 void FlatLabel::onTouchSelect() {

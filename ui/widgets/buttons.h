@@ -177,6 +177,8 @@ protected:
 	QImage prepareRippleMask() const override;
 	QPoint prepareRippleStartPosition() const override;
 
+	const style::IconButton &style();
+
 private:
 	const style::IconButton &_st;
 	const style::icon *_iconOverride = nullptr;
