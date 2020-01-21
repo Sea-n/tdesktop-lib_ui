@@ -77,7 +77,14 @@ void Instance::hideAnimated() {
 
 void Instance::hide() {
 	_widget->hide();
-	_widget->deleteLater();
+
+/*
+ * [Telegreat Workaround]
+ *
+ * It will refresh the window, causing the Chinese input interrupt.
+ * Disabling this may cause memory leaks, but it should not be a big deal.
+ */
+//	_widget->deleteLater();
 }
 
 } // namespace Toast
