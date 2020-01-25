@@ -160,8 +160,8 @@ void StartFonts() {
 		// https://github.com/telegramdesktop/tdesktop/issues/5368
 		//
 		//QFont::insertSubstitution(name, fallback);
-		QFont::insertSubstitution(qsl("Open Sans"), qsl("Microsoft JhengHei"));
-		QFont::insertSubstitution(qsl("Open Sans Semibold"), qsl("Microsoft JhengHei Bold"));
+		QFont::insertSubstitution(QStringLiteral("Open Sans"), QStringLiteral("Microsoft JhengHei"));
+		QFont::insertSubstitution(QStringLiteral("Open Sans Semibold"), QStringLiteral("Microsoft JhengHei Bold"));
 #endif // Q_OS_WIN
 	}
 #endif // !DESKTOP_APP_USE_PACKAGED_FONTS
