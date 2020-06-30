@@ -455,14 +455,14 @@ Text::StateResult FlatLabel::dragActionFinish(const QPoint &p, Qt::MouseButton b
 		}
 	}
 
-#if defined Q_OS_LINUX32 || defined Q_OS_LINUX64
+#if defined Q_OS_UNIX && !defined Q_OS_MAC
 	if (!_selection.empty()) {
 		TextUtilities::SetClipboardText(
 			_text.toTextForMimeData(_selection),
 			QClipboard::Selection);
 		Ui::Toast::Show("Copied!");
 	}
-#endif // Q_OS_LINUX32 || Q_OS_LINUX64
+#endif // Q_OS_UNIX && !Q_OS_MAC
 
 	return state;
 }

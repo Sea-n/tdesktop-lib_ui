@@ -104,12 +104,12 @@ QString GetFullSimpleTextTag(const TextWithTags &textWithTags) {
 	auto from = 0;
 	auto till = int(text.size());
 	for (; from != till; ++from) {
-		if (!IsNewline(text[from]) && !chIsSpace(text[from])) {
+		if (!IsNewline(text[from]) && !Text::IsSpace(text[from])) {
 			break;
 		}
 	}
 	while (till != from) {
-		if (!IsNewline(text[till - 1]) && !chIsSpace(text[till - 1])) {
+		if (!IsNewline(text[till - 1]) && !Text::IsSpace(text[till - 1])) {
 			break;
 		}
 		--till;
@@ -651,15 +651,6 @@ void RemoveDocumentTags(
 	cursor.mergeCharFormat(format);
 }
 
-style::font AdjustFont(
-		const style::font &font,
-		const style::font &original) {
-	return (font->size() != original->size()
-		|| font->flags() != original->flags())
-		? style::font(original->size(), original->flags(), font->family())
-		: font;
-}
-
 bool IsValidMarkdownLink(const QString &link) {
 	return (link.indexOf('.') >= 0) || (link.indexOf(':') >= 0);
 }
@@ -672,16 +663,8 @@ QTextCharFormat PrepareTagFormat(
 		result.setForeground(st::defaultTextPalette.linkFg);
 		result.setFont(st.font);
 	} else if (tag == kTagBold) {
-		auto semibold = st::semiboldFont;
-		if (semibold->size() != st.font->size()
-			|| semibold->flags() != st.font->flags()) {
-			semibold = style::font(
-				st.font->size(),
-				st.font->flags(),
-				semibold->family());
-		}
 		result.setForeground(st.textFg);
-		result.setFont(AdjustFont(st::semiboldFont, st.font));
+		result.setFont(st.font->bold());
 	} else if (tag == kTagItalic) {
 		result.setForeground(st.textFg);
 		result.setFont(st.font->italic());
@@ -693,7 +676,7 @@ QTextCharFormat PrepareTagFormat(
 		result.setFont(st.font->strikeout());
 	} else if (tag == kTagCode || tag == kTagPre) {
 		result.setForeground(st::defaultTextPalette.monoFg);
-		result.setFont(AdjustFont(style::MonospaceFont(), st.font));
+		result.setFont(st.font->monospace());
 	} else {
 		result.setForeground(st.textFg);
 		result.setFont(st.font);
@@ -1991,7 +1974,7 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 	const auto tildeFormatting = (_st.font->f.pixelSize() * style::DevicePixelRatio() == 13)
 		&& (_st.font->f.family() == qstr("DAOpenSansRegular"));
 	auto isTildeFragment = false;
-	const auto tildeFixedFont = AdjustFont(st::semiboldFont, _st.font);
+	auto tildeFixedFont = _st.font->semibold()->f;
 
 	// First tag handling (the one we inserted text to).
 	bool startTagFound = false;
@@ -2041,6 +2024,11 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 					break;
 				}
 				if (tildeFormatting) {
+					const auto formatFont = format.font();
+					if (!tildeFixedFont.styleName().isEmpty()
+						&& formatFont.styleName().isEmpty()) {
+						tildeFixedFont.setStyleName(QString());
+					}
 					isTildeFragment = (format.font() == tildeFixedFont);
 				}
 
@@ -2102,7 +2090,7 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 						break;
 					}
 
-					if (breakTagOnNotLetter && !ch->isLetter()) {
+					if (breakTagOnNotLetter && !ch->isLetterOrNumber()) {
 						// Remove tag name till the end if no current action is prepared.
 						if (action.type != ActionType::Invalid) {
 							break;
@@ -2201,6 +2189,22 @@ void InputField::onDocumentContentsChange(
 		int charsAdded) {
 	if (_correcting) {
 		return;
+	}
+
+	// In case of input method events Qt emits
+	// document content change signals for a whole
+	// text block where the even took place.
+	// This breaks our wysiwyg markup, so we adjust
+	// the parameters to match the real change.
+	if (_inputMethodCommit.has_value()
+		&& charsAdded > _inputMethodCommit->size()
+		&& charsRemoved > 0) {
+		const auto inBlockBefore = charsAdded - _inputMethodCommit->size();
+		if (charsRemoved >= inBlockBefore) {
+			charsAdded -= inBlockBefore;
+			charsRemoved -= inBlockBefore;
+			position += inBlockBefore;
+		}
 	}
 
 	const auto document = _inner->document();
@@ -2691,6 +2695,8 @@ void InputField::keyPressEventInner(QKeyEvent *e) {
 		const auto oldPosition = textCursor().position();
 		if (enter && ctrl) {
 			e->setModifiers(e->modifiers() & ~Qt::ControlModifier);
+		} else if (enter && shift) {
+			e->setModifiers(e->modifiers() & ~Qt::ShiftModifier);
 		}
 		_inner->QTextEdit::keyPressEvent(e);
 		auto cursor = textCursor();
@@ -2900,10 +2906,16 @@ void InputField::inputMethodEventInner(QInputMethodEvent *e) {
 		_lastPreEditText = preedit;
 		startPlaceholderAnimation();
 	}
-	const auto text = e->commitString();
+	_inputMethodCommit = e->commitString();
+
+	const auto weak = Ui::MakeWeak(this);
 	_inner->QTextEdit::inputMethodEvent(e);
-	if (!processMarkdownReplaces(text)) {
-		processInstantReplaces(text);
+
+	if (weak) {
+		const auto text = *base::take(_inputMethodCommit);
+		if (!processMarkdownReplaces(text)) {
+			processInstantReplaces(text);
+		}
 	}
 }
 
@@ -3099,7 +3111,7 @@ bool InputField::commitMarkdownReplacement(
 			const auto ch = outer.at(check);
 			if (IsNewline(ch)) {
 				return check + 1;
-			} else if (!chIsSpace(ch)) {
+			} else if (!Text::IsSpace(ch)) {
 				break;
 			}
 		}

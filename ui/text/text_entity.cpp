@@ -21,6 +21,8 @@
 namespace TextUtilities {
 namespace {
 
+using namespace Ui::Text;
+
 QString ExpressionMailNameAtEnd() {
 	// Matches email first part (before '@') at the end of the string.
 	// First we find a domain without protocol (like "gmail.com"), then
@@ -1189,6 +1191,18 @@ std::unique_ptr<QMimeData> MimeDataFromText(
 	return result;
 }
 
+bool IsSentencePartEnd(QChar ch) {
+	return (ch == ',')
+		|| (ch == ':')
+		|| (ch == ';');
+}
+
+bool IsSentenceEnd(QChar ch) {
+	return (ch == '.')
+		|| (ch == '?')
+		|| (ch == '!');
+}
+
 } // namespace
 
 const QRegularExpression &RegExpMailNameAtEnd() {
@@ -1303,10 +1317,10 @@ QString SingleLine(const QString &text) {
 	auto s = text.unicode(), ch = s, e = text.unicode() + text.size();
 
 	// Trim.
-	while (s < e && chIsTrimmed(*s)) {
+	while (s < e && IsTrimmed(*s)) {
 		++s;
 	}
-	while (s < e && chIsTrimmed(*(e - 1))) {
+	while (s < e && IsTrimmed(*(e - 1))) {
 		--e;
 	}
 	if (e - s != text.size()) {
@@ -1314,11 +1328,17 @@ QString SingleLine(const QString &text) {
 	}
 
 	for (auto ch = s; ch != e; ++ch) {
-		if (chIsNewline(*ch) || *ch == TextCommand) {
+		if (IsNewline(*ch) || *ch == TextCommand) {
 			result[int(ch - s)] = QChar::Space;
 		}
 	}
 	return result;
+}
+
+TextWithEntities SingleLine(const TextWithEntities &text) {
+	auto copy = text;
+	Trim(copy);
+	return { SingleLine(copy.text), std::move(copy.entities) };
 }
 
 QString RemoveAccents(const QString &text) {
@@ -1330,7 +1350,7 @@ QString RemoveAccents(const QString &text) {
 			if (copying) result[i] = *ch;
 			continue;
 		}
-		if (chIsDiac(*ch)) {
+		if (IsDiac(*ch)) {
 			copying = true;
 			--i;
 			continue;
@@ -1428,14 +1448,14 @@ bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
 			if (inEntity && !canBreakEntity) {
 				markGoodAsLevel(0);
 			} else {
-				if (chIsNewline(*ch)) {
+				if (IsNewline(*ch)) {
 					if (inEntity) {
-						if (ch + 1 < end && chIsNewline(*(ch + 1))) {
+						if (ch + 1 < end && IsNewline(*(ch + 1))) {
 							markGoodAsLevel(12);
 						} else {
 							markGoodAsLevel(11);
 						}
-					} else if (ch + 1 < end && chIsNewline(*(ch + 1))) {
+					} else if (ch + 1 < end && IsNewline(*(ch + 1))) {
 						markGoodAsLevel(15);
 					} else if (currentEntity < entityCount && ch + 1 == start + left.entities[currentEntity].offset() && left.entities[currentEntity].type() == EntityType::Pre) {
 						markGoodAsLevel(14);
@@ -1444,15 +1464,15 @@ bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
 					} else {
 						markGoodAsLevel(13);
 					}
-				} else if (chIsSpace(*ch)) {
-					if (chIsSentenceEnd(*(ch - 1))) {
+				} else if (IsSpace(*ch)) {
+					if (IsSentenceEnd(*(ch - 1))) {
 						markGoodAsLevel(9 + noEntityLevel);
-					} else if (chIsSentencePartEnd(*(ch - 1))) {
+					} else if (IsSentencePartEnd(*(ch - 1))) {
 						markGoodAsLevel(7 + noEntityLevel);
 					} else {
 						markGoodAsLevel(5 + noEntityLevel);
 					}
-				} else if (chIsWordSeparator(*(ch - 1))) {
+				} else if (IsWordSeparator(*(ch - 1))) {
 					markGoodAsLevel(3 + noEntityLevel);
 				} else {
 					markGoodAsLevel(1 + noEntityLevel);
@@ -1755,13 +1775,14 @@ void ParseEntities(TextWithEntities &result, int32 flags, bool rich) {
 				const QChar *domainEnd = start + mDomain.capturedEnd(), *p = domainEnd;
 				for (; p < end; ++p) {
 					QChar ch(*p);
-					if (chIsLinkEnd(ch)) break; // link finished
-					if (chIsAlmostLinkEnd(ch)) {
+					if (IsLinkEnd(ch)) {
+						break; // link finished
+					} else if (IsAlmostLinkEnd(ch)) {
 						const QChar *endTest = p + 1;
-						while (endTest < end && chIsAlmostLinkEnd(*endTest)) {
+						while (endTest < end && IsAlmostLinkEnd(*endTest)) {
 							++endTest;
 						}
-						if (endTest >= end || chIsLinkEnd(*endTest)) {
+						if (endTest >= end || IsLinkEnd(*endTest)) {
 							break; // link finished at p
 						}
 						p = endTest;
@@ -1873,7 +1894,7 @@ void ApplyServerCleaning(TextWithEntities &result) {
 		if (ch->unicode() == '\r') {
 			MovePartAndGoForward(result, to, from, (ch - start) - from);
 			++from;
-		} else if (chReplacedBySpace(*ch)) {
+		} else if (IsReplacedBySpace(*ch)) {
 			*ch = ' ';
 		}
 	}
@@ -1887,7 +1908,7 @@ void Trim(TextWithEntities &result) {
 	// right trim
 	for (auto s = result.text.data(), e = s + result.text.size(), ch = e; ch != s;) {
 		--ch;
-		if (!chIsTrimmed(*ch)) {
+		if (!IsTrimmed(*ch)) {
 			if (ch + 1 < e) {
 				auto l = ch + 1 - s;
 				for (auto &entity : result.entities) {
@@ -1910,7 +1931,7 @@ void Trim(TextWithEntities &result) {
 
 	// left trim
 	for (auto s = result.text.data(), ch = s, e = s + result.text.size(); ch != e; ++ch) {
-		if (!chIsTrimmed(*ch) || (ch - s) == firstMonospaceOffset) {
+		if (!IsTrimmed(*ch) || (ch - s) == firstMonospaceOffset) {
 			if (ch > s) {
 				auto l = ch - s;
 				for (auto &entity : result.entities) {
@@ -2005,6 +2026,8 @@ EntitiesInText ConvertTextTagsToEntities(const TextWithTags::Tags &tags) {
 			}
 		} else if (tag.id == Ui::InputField::kTagBold) {
 			push(EntityType::Bold);
+		//} else if (tag.id == Ui::InputField::kTagSemibold) {
+		//	push(EntityType::Semibold); // Semibold is for UI parts only.
 		} else if (tag.id == Ui::InputField::kTagItalic) {
 			push(EntityType::Italic);
 		} else if (tag.id == Ui::InputField::kTagUnderline) {
@@ -2048,6 +2071,9 @@ TextWithTags::Tags ConvertEntitiesToTextTags(const EntitiesInText &entities) {
 			}
 		} break;
 		case EntityType::Bold: push(Ui::InputField::kTagBold); break;
+		//case EntityType::Semibold: // Semibold is for UI parts only.
+		//	push(Ui::InputField::kTagSemibold);
+		//	break;
 		case EntityType::Italic: push(Ui::InputField::kTagItalic); break;
 		case EntityType::Underline:
 			push(Ui::InputField::kTagUnderline);

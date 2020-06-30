@@ -6,13 +6,16 @@
 //
 #include "ui/style/style_core_font.h"
 
-#include "base/algorithm.h"
+#include "ui/style/style_core_custom_font.h"
 #include "ui/ui_log.h"
+#include "base/algorithm.h"
+#include "ui/integration.h"
 
 #include <QtCore/QMap>
 #include <QtCore/QVector>
 #include <QtGui/QFontInfo>
 #include <QtGui/QFontDatabase>
+#include <QtWidgets/QApplication>
 
 void style_InitFontsResource() {
 #ifndef DESKTOP_APP_USE_PACKAGED_FONTS
@@ -22,9 +25,9 @@ void style_InitFontsResource() {
 	Q_INIT_RESOURCE(win);
 #elif defined Q_OS_MAC // Q_OS_WIN
 	Q_INIT_RESOURCE(mac);
-#elif defined Q_OS_LINUX && !defined DESKTOP_APP_USE_PACKAGED // Q_OS_WIN || Q_OS_MAC
+#elif defined Q_OS_UNIX && !defined DESKTOP_APP_USE_PACKAGED // Q_OS_WIN || Q_OS_MAC
 	Q_INIT_RESOURCE(linux);
-#endif // Q_OS_WIN || Q_OS_MAC || (Q_OS_LINUX && !DESKTOP_APP_USE_PACKAGED)
+#endif // Q_OS_WIN || Q_OS_MAC || (Q_OS_UNIX && !DESKTOP_APP_USE_PACKAGED)
 }
 
 namespace style {
@@ -36,16 +39,14 @@ QVector<QString> fontFamilies;
 QMap<uint32, FontData*> fontsMap;
 
 uint32 fontKey(int size, uint32 flags, int family) {
-	return (((uint32(family) << 10) | uint32(size)) << 4) | flags;
+	return (((uint32(family) << 12) | uint32(size)) << 6) | flags;
 }
 
 bool ValidateFont(const QString &familyName, int flags = 0) {
 	QFont checkFont(familyName);
-	checkFont.setPixelSize(13);
 	checkFont.setBold(flags & style::internal::FontBold);
 	checkFont.setItalic(flags & style::internal::FontItalic);
 	checkFont.setUnderline(flags & style::internal::FontUnderline);
-	checkFont.setStyleStrategy(QFont::PreferQuality);
 	auto realFamily = QFontInfo(checkFont).family();
 	if (realFamily.trimmed().compare(familyName, Qt::CaseInsensitive)) {
 		UI_LOG(("Font Error: could not resolve '%1' font, got '%2'.").arg(familyName).arg(realFamily));
@@ -85,6 +86,27 @@ bool LoadCustomFont(const QString &filePath, const QString &familyName, int flag
 	return ValidateFont(familyName, flags);
 }
 
+[[nodiscard]] QString SystemMonospaceFont() {
+	const auto type = QFontDatabase::FixedFont;
+	return QFontDatabase::systemFont(type).family();
+}
+
+[[nodiscard]] QString ManualMonospaceFont() {
+	const auto kTryFirst = std::initializer_list<QString>{
+		"Consolas",
+		"Liberation Mono",
+		"Menlo",
+		"Courier"
+	};
+	for (const auto &family : kTryFirst) {
+		const auto resolved = QFontInfo(QFont(family)).family();
+		if (!resolved.trimmed().compare(family, Qt::CaseInsensitive)) {
+			return family;
+		}
+	}
+	return QString();
+}
+
 enum {
 	FontTypeRegular = 0,
 	FontTypeRegularItalic,
@@ -96,13 +118,37 @@ enum {
 	FontTypesCount,
 };
 #ifndef DESKTOP_APP_USE_PACKAGED_FONTS
+QString FontTypeFiles[FontTypesCount] = {
+	"DAOpenSansRegular",
+	"DAOpenSansRegularItalic",
+	"DAOpenSansSemiboldAsBold",
+	"DAOpenSansSemiboldItalicAsBold",
+	"DAOpenSansSemiboldAsBold",
+	"DAOpenSansSemiboldItalicAsBold",
+};
 QString FontTypeNames[FontTypesCount] = {
 	"DAOpenSansRegular",
 	"DAOpenSansRegularItalic",
-	"DAOpenSansBold",
-	"DAOpenSansBoldItalic",
 	"DAOpenSansSemibold",
 	"DAOpenSansSemiboldItalic",
+	"DAOpenSansSemibold",
+	"DAOpenSansSemiboldItalic",
+};
+QString FontTypePersianFallbackFiles[FontTypesCount] = {
+	"DAVazirRegular",
+	"DAVazirRegular",
+	"DAVazirMediumAsBold",
+	"DAVazirMediumAsBold",
+	"DAVazirMediumAsBold",
+	"DAVazirMediumAsBold",
+};
+QString FontTypePersianFallback[FontTypesCount] = {
+	"DAVazirRegular",
+	"DAVazirRegular",
+	"DAVazirMedium",
+	"DAVazirMedium",
+	"DAVazirMedium",
+	"DAVazirMedium",
 };
 #endif // !DESKTOP_APP_USE_PACKAGED_FONTS
 int32 FontTypeFlags[FontTypesCount] = {
@@ -110,19 +156,9 @@ int32 FontTypeFlags[FontTypesCount] = {
 	FontItalic,
 	FontBold,
 	FontBold | FontItalic,
-	0,
-	FontItalic,
+	FontSemibold,
+	FontSemibold | FontItalic,
 };
-#ifdef Q_OS_WIN
-QString FontTypeWindowsFallback[FontTypesCount] = {
-	"Segoe UI",
-	"Segoe UI",
-	"Segoe UI",
-	"Segoe UI",
-	"Segoe UI Semibold",
-	"Segoe UI Semibold",
-};
-#endif // Q_OS_WIN
 
 bool Started = false;
 QString Overrides[FontTypesCount];
@@ -137,19 +173,30 @@ void StartFonts() {
 
 	style_InitFontsResource();
 
+	const auto integrationExists = Ui::Integration::Exists();
+	if (integrationExists) {
+		Ui::Integration::Instance().startFontsBegin();
+	}
+
 #ifndef DESKTOP_APP_USE_PACKAGED_FONTS
 	bool areGood[FontTypesCount] = { false };
 	for (auto i = 0; i != FontTypesCount; ++i) {
+		const auto file = FontTypeFiles[i];
 		const auto name = FontTypeNames[i];
 		const auto flags = FontTypeFlags[i];
-		areGood[i] = LoadCustomFont(":/gui/fonts/" + name + ".ttf", name, flags);
+		areGood[i] = LoadCustomFont(":/gui/fonts/" + file + ".ttf", name, flags);
 		Overrides[i] = name;
+
+		const auto persianFallbackFile = FontTypePersianFallbackFiles[i];
+		const auto persianFallback = FontTypePersianFallback[i];
+		LoadCustomFont(":/gui/fonts/" + persianFallbackFile + ".ttf", persianFallback, flags);
+
 #ifdef Q_OS_WIN
 		// Attempt to workaround a strange font bug with Open Sans Semibold not loading.
 		// See https://github.com/telegramdesktop/tdesktop/issues/3276 for details.
 		// Crash happens on "options.maxh / _t->_st->font->height" with "division by zero".
 		// In that place "_t->_st->font" is "semiboldFont" is "font(13 "Open Sans Semibold").
-		const auto fallback = FontTypeWindowsFallback[i];
+		const auto fallback = "Segoe UI";
 		if (!areGood[i]) {
 			if (ValidateFont(fallback, flags)) {
 				Overrides[i] = fallback;
@@ -163,8 +210,10 @@ void StartFonts() {
 		QFont::insertSubstitution(QStringLiteral("Open Sans"), QStringLiteral("Microsoft JhengHei"));
 		QFont::insertSubstitution(QStringLiteral("Open Sans Semibold"), QStringLiteral("Microsoft JhengHei Bold"));
 #endif // Q_OS_WIN
+
+		QFont::insertSubstitution(name, persianFallback);
 	}
-#endif // !DESKTOP_APP_USE_PACKAGED_FONTS
+
 #ifdef Q_OS_MAC
 	auto list = QStringList();
 	list.append("STIXGeneral");
@@ -175,33 +224,60 @@ void StartFonts() {
 		QFont::insertSubstitutions(name, list);
 	}
 #endif // Q_OS_MAC
+#endif // !DESKTOP_APP_USE_PACKAGED_FONTS
+
+	auto appFont = QApplication::font();
+	appFont.setStyleStrategy(QFont::PreferQuality);
+	QApplication::setFont(appFont);
+
+	if (integrationExists) {
+		Ui::Integration::Instance().startFontsEnd();
+	}
 }
 
-QString GetPossibleEmptyOverride(const QString &familyName, int32 flags) {
-	flags = flags & (FontBold | FontItalic);
-	if (familyName == qstr("Open Sans")) {
-		if (flags == (FontBold | FontItalic)) {
-			return Overrides[FontTypeBoldItalic];
-		} else if (flags == FontBold) {
-			return Overrides[FontTypeBold];
-		} else if (flags == FontItalic) {
-			return Overrides[FontTypeRegularItalic];
-		} else if (flags == 0) {
-			return Overrides[FontTypeRegular];
-		}
-	} else if (familyName == qstr("Open Sans Semibold")) {
-		if (flags == FontItalic) {
-			return Overrides[FontTypeSemiboldItalic];
-		} else if (flags == 0) {
-			return Overrides[FontTypeSemibold];
-		}
+QString GetPossibleEmptyOverride(int32 flags) {
+	flags = flags & (FontBold | FontSemibold | FontItalic);
+	int32 flagsBold = flags & (FontBold | FontItalic);
+	int32 flagsSemibold = flags & (FontSemibold | FontItalic);
+	if (flagsSemibold == (FontSemibold | FontItalic)) {
+		return Overrides[FontTypeSemiboldItalic];
+	} else if (flagsSemibold == FontSemibold) {
+		return Overrides[FontTypeSemibold];
+	} else if (flagsBold == (FontBold | FontItalic)) {
+		return Overrides[FontTypeBoldItalic];
+	} else if (flagsBold == FontBold) {
+		return Overrides[FontTypeBold];
+	} else if (flags == FontItalic) {
+		return Overrides[FontTypeRegularItalic];
+	} else if (flags == 0) {
+		return Overrides[FontTypeRegular];
 	}
 	return QString();
 }
 
-QString GetFontOverride(const QString &familyName, int32 flags) {
-	const auto result = GetPossibleEmptyOverride(familyName, flags);
-	return result.isEmpty() ? familyName : result;
+QString GetFontOverride(int32 flags) {
+	const auto result = GetPossibleEmptyOverride(flags);
+	return result.isEmpty() ? "Open Sans" : result;
+}
+
+QString MonospaceFont() {
+	static const auto family = [&]() -> QString {
+		const auto manual = ManualMonospaceFont();
+		const auto system = SystemMonospaceFont();
+
+#if defined Q_OS_WIN || defined Q_OS_MAC
+		// Prefer our monospace font.
+		const auto useSystem = manual.isEmpty();
+#else // Q_OS_WIN || Q_OS_MAC
+		// Prefer system monospace font.
+		const auto metrics = QFontMetrics(QFont(system));
+		const auto useSystem = manual.isEmpty()
+			|| (metrics.charWidth("i", 0) == metrics.charWidth("W", 0));
+#endif // Q_OS_WIN || Q_OS_MAC
+		return useSystem ? system : manual;
+	}();
+
+	return family;
 }
 
 void destroyFonts() {
@@ -222,7 +298,7 @@ int registerFontFamily(const QString &family) {
 }
 
 FontData::FontData(int size, uint32 flags, int family, Font *other)
-: f(GetFontOverride(fontFamilies[family], flags))
+: f(ResolveFont(flags, size))
 , m(f)
 , _size(size)
 , _flags(flags)
@@ -234,20 +310,6 @@ FontData::FontData(int size, uint32 flags, int family, Font *other)
 	}
 	modified[_flags] = Font(this);
 
-	f.setPixelSize(size);
-	if (_flags & FontBold) {
-		f.setBold(true);
-#ifdef DESKTOP_APP_USE_PACKAGED_FONTS
-	} else if (fontFamilies[family] == "Open Sans Semibold") {
-		f.setWeight(QFont::DemiBold);
-#endif
-	}
-	f.setItalic(_flags & FontItalic);
-	f.setUnderline(_flags & FontUnderline);
-	f.setStrikeOut(_flags & FontStrikeOut);
-	f.setStyleStrategy(QFont::PreferQuality);
-
-	m = QFontMetrics(f);
 	height = m.height();
 	ascent = m.ascent();
 	descent = m.descent();
@@ -269,6 +331,14 @@ Font FontData::underline(bool set) const {
 
 Font FontData::strikeout(bool set) const {
 	return otherFlagsFont(FontStrikeOut, set);
+}
+
+Font FontData::semibold(bool set) const {
+	return otherFlagsFont(FontSemibold, set);
+}
+
+Font FontData::monospace(bool set) const {
+	return otherFlagsFont(FontMonospace, set);
 }
 
 int FontData::size() const {

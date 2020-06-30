@@ -15,7 +15,8 @@ namespace style {
 namespace internal {
 
 void StartFonts();
-[[nodiscard]] QString GetFontOverride(const QString &familyName, int32 flags = 0);
+[[nodiscard]] QString GetFontOverride(int32 flags = 0);
+[[nodiscard]] QString MonospaceFont();
 
 void destroyFonts();
 int registerFontFamily(const QString &family);
@@ -59,23 +60,27 @@ enum FontFlags {
 	FontItalic = 0x02,
 	FontUnderline = 0x04,
 	FontStrikeOut = 0x08,
+	FontSemibold = 0x10,
+	FontMonospace = 0x20,
 
-	FontDifferentFlags = 0x10,
+	FontDifferentFlags = 0x40,
 };
 
 class FontData {
 public:
-
-	int32 width(const QString &str) const {
+	int width(const QString &str) const {
 		return m.width(str);
 	}
-	int32 width(const QString &str, int32 from, int32 to) const {
+	int width(const QString &str, int32 from, int32 to) const {
 		return width(str.mid(from, to));
 	}
-	int32 width(QChar ch) const {
+	int width(QChar ch) const {
 		return m.width(ch);
 	}
-	QString elided(const QString &str, int32 width, Qt::TextElideMode mode = Qt::ElideRight) const {
+	QString elided(
+			const QString &str,
+			int width,
+			Qt::TextElideMode mode = Qt::ElideRight) const {
 		return m.elidedText(str, mode, width);
 	}
 
@@ -83,6 +88,8 @@ public:
 	Font italic(bool set = true) const;
 	Font underline(bool set = true) const;
 	Font strikeout(bool set = true) const;
+	Font semibold(bool set = true) const;
+	Font monospace(bool set = true) const;
 
 	int size() const;
 	uint32 flags() const;

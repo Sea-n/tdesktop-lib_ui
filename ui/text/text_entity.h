@@ -12,7 +12,7 @@
 #include <QtCore/QVector>
 #include <QtGui/QClipboard>
 
-enum class EntityType {
+enum class EntityType : uchar {
 	Invalid = 0,
 
 	Url,
@@ -25,11 +25,24 @@ enum class EntityType {
 	BotCommand,
 
 	Bold,
+	Semibold,
 	Italic,
 	Underline,
 	StrikeOut,
 	Code, // inline
 	Pre,  // block
+};
+
+enum class EntityLinkShown : uchar {
+	Full,
+	Partial,
+};
+
+struct EntityLinkData {
+	QString text;
+	QString data;
+	EntityType type = EntityType::Invalid;
+	EntityLinkShown shown = EntityLinkShown::Full;
 };
 
 class EntityInText;
@@ -225,11 +238,6 @@ enum {
 	TextParseHashtags = 0x010,
 	TextParseBotCommands = 0x020,
 	TextParseMarkdown = 0x040,
-
-	TextTwitterMentions = 0x100,
-	TextTwitterHashtags = 0x200,
-	TextInstagramMentions = 0x400,
-	TextInstagramHashtags = 0x800,
 };
 
 struct TextWithTags {
@@ -285,6 +293,7 @@ QString MarkdownPreBadAfter();
 QString Clean(const QString &text);
 QString EscapeForRichParsing(const QString &text);
 QString SingleLine(const QString &text);
+TextWithEntities SingleLine(const TextWithEntities &text);
 QString RemoveAccents(const QString &text);
 QString RemoveEmoji(const QString &text);
 QStringList PrepareSearchWords(const QString &query, const QRegularExpression *SplitterOverride = nullptr);

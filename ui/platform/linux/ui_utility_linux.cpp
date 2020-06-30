@@ -8,6 +8,7 @@
 
 #include "base/flat_set.h"
 #include "ui/ui_log.h"
+#include "base/platform/base_platform_info.h"
 
 #include <QtCore/QPoint>
 #include <QtWidgets/QApplication>
@@ -22,6 +23,9 @@ bool IsApplicationActive() {
 }
 
 bool TranslucentWindowsSupported(QPoint globalPosition) {
+	if (::Platform::IsWayland()) {
+		return true;
+	}
 	if (const auto native = QGuiApplication::platformNativeInterface()) {
 		if (const auto desktop = QApplication::desktop()) {
 			const auto index = desktop->screenNumber(globalPosition);
